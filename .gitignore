@@ -1,0 +1,3 @@
+*.kdbx
+cmd/gokey/gokey
+cmd/gokey/gokey.exe
