@@ -19,50 +19,6 @@ func (enc Encode) EncodeToString(src []byte) string {
 	return string(buf)
 }
 
-// copy from Encoding/base64
-// 我需要支持 base64 的编码过程支持重复字符, 只能使用旧版本的 base64 代码
-func (enc Encode) base64encode(dst, src []byte, padChar byte) {
-	if len(src) == 0 {
-		return
-	}
-	di, si := 0, 0
-	n := (len(src) / 3) * 3
-	for si < n {
-		// Convert 3x 8bit source bytes into 4 bytes
-		val := uint(src[si+0])<<16 | uint(src[si+1])<<8 | uint(src[si+2])
-
-		dst[di+0] = enc[val>>18&0x3F]
-		dst[di+1] = enc[val>>12&0x3F]
-		dst[di+2] = enc[val>>6&0x3F]
-		dst[di+3] = enc[val&0x3F]
-
-		si += 3
-		di += 4
-	}
-
-	remain := len(src) - si
-	if remain == 0 {
-		return
-	}
-	// Add the remaining small block
-	val := uint(src[si+0]) << 16
-	if remain == 2 {
-		val |= uint(src[si+1]) << 8
-	}
-
-	dst[di+0] = enc[val>>18&0x3F]
-	dst[di+1] = enc[val>>12&0x3F]
-	switch remain {
-	case 2:
-		dst[di+2] = enc[val>>6&0x3F]
-		dst[di+3] = padChar
-	case 1:
-		dst[di+2] = padChar
-		dst[di+3] = padChar
-
-	}
-}
-
 // 简单的将 []byte 映射成字符串.
 func (enc Encode) bsToString(dst, src []byte) {
 	chars := []byte(enc)
@@ -183,6 +139,14 @@ func CharsHelpString() string {
 	sb := strings.Builder{}
 	for _, v := range chars {
 		sb.WriteString(fmt.Sprintf("%s:%s\n", v.name, v.chars))
+	}
+	return sb.String()
+}
+
+func HashHelpString() string {
+	sb := strings.Builder{}
+	for _, v := range hashfuncs {
+		sb.WriteString(fmt.Sprintf("%s\n", v.name))
 	}
 	return sb.String()
 }

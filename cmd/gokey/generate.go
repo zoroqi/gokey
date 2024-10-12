@@ -11,6 +11,7 @@ var generate_flag_chars string
 var generate_flag_len int
 var generate_flag_salt string
 var generate_flag_plaintext string
+var generate_flag_hash string
 
 var generateCmd = &cobra.Command{
 	Use:     "generate",
@@ -20,11 +21,11 @@ var generateCmd = &cobra.Command{
 }
 
 func init() {
-	generateCmd.Flags().StringVar(&generate_flag_chars,
-		"chars", "default", gokey.CharsHelpString())
+	generateCmd.Flags().StringVar(&generate_flag_chars, "chars", "default", gokey.CharsHelpString())
 	generateCmd.Flags().IntVarP(&generate_flag_len, "len", "l", 20, "password length")
 	generateCmd.Flags().StringVar(&generate_flag_salt, "salt", "", "salt, default: unix micro timestamp")
 	generateCmd.Flags().StringVar(&generate_flag_plaintext, "text", "", "plaintext, default: unix micro timestamp")
+	generateCmd.Flags().StringVar(&generate_flag_hash, "hash", "SHA512", gokey.HashHelpString())
 }
 
 func runGenerate(cmd *cobra.Command, args []string) error {
@@ -35,8 +36,10 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 		generate_flag_plaintext = fmt.Sprintf("%d", time.Now().UnixMicro())
 	}
 	pw := gokey.GenerateKey(generate_flag_plaintext, generate_flag_salt, generate_flag_len,
-		gokey.GetCharset(generate_flag_chars), gokey.GetHashFunc("SHA512", nil))
+		gokey.GetCharset(generate_flag_chars), gokey.GetHashFunc(generate_flag_hash, nil))
 	fmt.Println(pw)
-	writeClipboard(pw)
+	if writeClipboardFlag {
+		writeClipboard(pw)
+	}
 	return nil
 }

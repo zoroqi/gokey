@@ -2,6 +2,7 @@ package gokey
 
 import (
 	"errors"
+	"fmt"
 	"github.com/tobischo/gokeepasslib/v3"
 	"github.com/tobischo/gokeepasslib/v3/wrappers"
 	"os"
@@ -35,6 +36,15 @@ type ConfigInfo struct {
 	SupportedHashFunc []string
 }
 
+type Tuple[K, V any] struct {
+	K K
+	V V
+}
+
+func TupleOf[K, V any](k K, v V) Tuple[K, V] {
+	return Tuple[K, V]{k, v}
+}
+
 const (
 	index_config      = 0
 	index_data        = 1
@@ -44,6 +54,19 @@ const (
 const (
 	key_chars = "chars_"
 )
+
+var ConfigReservedWord = map[string]bool{
+	"Title":     true,
+	"UserName":  true,
+	"URL":       true,
+	"Notes":     true,
+	"Charset":   true,
+	"Plaintext": true,
+	"Rule":      true,
+	"Length":    true,
+	"Hash":      true,
+	"Password":  true,
+}
 
 var ErrNotFoundEntry = errors.New("not found")
 var ErrNotFoundGroup = errors.New("group not found")
@@ -126,7 +149,10 @@ func Open(path, password string) (*DB, error) {
 	if err := gokeepasslib.NewDecoder(file).Decode(db); err != nil {
 		return nil, err
 	}
-	db.UnlockProtectedEntries()
+	err = db.UnlockProtectedEntries()
+	if err != nil {
+		return nil, err
+	}
 	return &DB{db: db}, nil
 }
 
@@ -137,7 +163,10 @@ func (d *DB) Save(path string) error {
 		return err
 	}
 	defer file.Close()
-	d.db.LockProtectedEntries()
+	err = d.db.LockProtectedEntries()
+	if err != nil {
+		return err
+	}
 	return gokeepasslib.NewEncoder(file).Encode(d.db)
 }
 
@@ -330,7 +359,7 @@ func entryToEntryInfo(entry gokeepasslib.Entry, path string, getPass bool) Entry
 	return e
 }
 
-func (d *DB) GetConfig(key string) (gokeepasslib.Entry, error) {
+func (d *DB) getConfig(key string) (gokeepasslib.Entry, error) {
 	configGroup := d.getRoot().Groups[index_config]
 	for _, entry := range configGroup.Entries {
 		if entry.GetTitle() == key {
@@ -340,8 +369,39 @@ func (d *DB) GetConfig(key string) (gokeepasslib.Entry, error) {
 	return gokeepasslib.NewEntry(), ErrNotFoundEntry
 }
 
+func (d *DB) GetConfig(key string) ([]Tuple[string, string], error) {
+	configGroup := d.getRoot().Groups[index_config]
+	for _, entry := range configGroup.Entries {
+		if entry.GetTitle() == key {
+			r := []Tuple[string, string]{}
+			for _, value := range entry.Values {
+				if !ConfigReservedWord[value.Key] {
+					r = append(r, TupleOf(value.Key, value.Value.Content))
+				}
+			}
+			return r, nil
+		}
+	}
+	return nil, ErrNotFoundEntry
+}
+
+func (d *DB) GetAllConfig() (map[string][]Tuple[string, string], error) {
+	configGroup := d.getRoot().Groups[index_config]
+	result := map[string][]Tuple[string, string]{}
+	for _, entry := range configGroup.Entries {
+		r := []Tuple[string, string]{}
+		for _, value := range entry.Values {
+			if !ConfigReservedWord[value.Key] {
+				r = append(r, TupleOf(value.Key, value.Value.Content))
+			}
+		}
+		result[entry.GetTitle()] = r
+	}
+	return result, nil
+}
+
 func (d *DB) GetCharsets() []string {
-	c, _ := d.GetConfig("Charsets")
+	c, _ := d.getConfig("Charsets")
 	r := []string{}
 	for _, value := range c.Values {
 		if strings.HasPrefix(value.Key, key_chars) {
@@ -351,14 +411,56 @@ func (d *DB) GetCharsets() []string {
 	return r
 }
 
-func (d *DB) SetConfig(key string, nEntry gokeepasslib.Entry) error {
+func (d *DB) DelConfig(config, key string) error {
+	if config == "Version" || config == "Title" || config == "Charsets" {
+		return fmt.Errorf("config `%s` is reserved", config)
+	}
 	configGroup := &d.getRoot().Groups[index_config]
 	for i, entry := range configGroup.Entries {
-		if entry.GetTitle() == key {
-			configGroup.Entries[i] = nEntry
+		if entry.GetTitle() == config {
+			for j, v := range entry.Values {
+				if v.Key == key {
+					entry.Values = append(entry.Values[:j], entry.Values[j+1:]...)
+					configGroup.Entries[i] = entry
+					return nil
+				}
+			}
 		}
 	}
-	return ErrNotFoundEntry
+	return nil
+}
+
+func (d *DB) EditConfig(config, key, value string) error {
+	if config == "Version" || config == "Title" {
+		return fmt.Errorf("config `%s` is reserved", config)
+	}
+	if config == "Charsets" && !strings.HasPrefix(key, key_chars) {
+		key = key_chars + strings.TrimPrefix(key, "_")
+	}
+
+	configGroup := &d.getRoot().Groups[index_config]
+	for i, entry := range configGroup.Entries {
+		if entry.GetTitle() == config {
+			for i, v := range entry.Values {
+				if config == "Charsets" && v.Key == key {
+					return fmt.Errorf("config `%s.%s` is reserved", config, key)
+				} else if v.Key == key {
+					v.Value.Content = value
+					entry.Values[i] = MkValue(key, value)
+					return nil
+				}
+			}
+			configGroup.Entries[i].Values = append(configGroup.Entries[i].Values,
+				gokeepasslib.ValueData{Key: key, Value: gokeepasslib.V{Content: value}})
+			return nil
+		}
+	}
+
+	entry := gokeepasslib.NewEntry()
+	entry.Values = append(entry.Values, MkValue("Title", config))
+	entry.Values = append(entry.Values, MkValue(key, value))
+	configGroup.Entries = append(configGroup.Entries, entry)
+	return nil
 }
 
 // createGroup creates a new group at the specified path
