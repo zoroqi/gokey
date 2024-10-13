@@ -224,7 +224,7 @@ func readInfo(info gokey.EntryInfo, charset []string, hash []string) (gokey.Entr
 func printTable(entries []gokey.EntryInfo) {
 
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetAlignment(tablewriter.ALIGN_DEFAULT)
+	table.SetAlignment(tablewriter.ALIGN_LEFT)
 	table.SetColWidth(25)
 	table.SetHeader([]string{"Path", "User", "URL", "Notes", "Tags", "Rule", "Len", "Hash", "Charset", "LastModified"})
 	for _, entry := range entries {
